@@ -12,11 +12,13 @@ class StepData extends Equatable {
   final int stepCount;
   final ActivityType activityType;
   final double magnitude;
+  final double stepsPerMinute;
 
   const StepData({
     required this.stepCount,
     required this.activityType,
     required this.magnitude,
+    this.stepsPerMinute = 0,
   });
 
   /// Calorías estimadas (0.04 cal por paso)
@@ -27,9 +29,10 @@ class StepData extends Equatable {
     final activityTypeString = map['activityType'] as String;
 
     return StepData(
-      stepCount: map['stepCount'] as int,
+      stepCount: (map['stepCount'] as num).toInt(),
       activityType: _parseActivityType(activityTypeString),
       magnitude: (map['magnitude'] as num).toDouble(),
+      stepsPerMinute: (map['stepsPerMinute'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -45,5 +48,5 @@ class StepData extends Equatable {
   }
 
   @override
-  List<Object> get props => [stepCount, activityType, magnitude];
+  List<Object> get props => [stepCount, activityType, magnitude, stepsPerMinute];
 }

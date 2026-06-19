@@ -4,6 +4,8 @@ import 'features/auth/data/datasources/biometric_datasource.dart';
 import 'features/auth/domain/usecases/authenticate_user.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/activity_monitor/presentation/activity_monitor_injection.dart';
+import 'features/activity_monitor/presentation/widgets/activity_monitor_widget.dart';
 import 'features/steps/presentation/widgets/step_counter_widget.dart';
 import 'features/tracking/presentation/widgets/route_map_widget.dart';
 
@@ -27,9 +29,11 @@ class FitnessApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6366F1)),
         useMaterial3: true,
       ),
-      home: BlocProvider(
-        create: (_) => AuthBloc(authenticateUser),
-        child: const AuthWrapper(),
+      home: ActivityMonitorScope(
+        child: BlocProvider(
+          create: (_) => AuthBloc(authenticateUser),
+          child: const AuthWrapper(),
+        ),
       ),
     );
   }
@@ -79,6 +83,8 @@ class HomePage extends StatelessWidget {
             StepCounterWidget(),
             SizedBox(height: 16),
             RouteMapWidget(),
+            SizedBox(height: 16),
+            ActivityMonitorWidget(),
           ],
         ),
       ),

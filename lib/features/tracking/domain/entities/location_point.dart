@@ -20,13 +20,18 @@ class LocationPoint extends Equatable {
   });
 
   factory LocationPoint.fromMap(Map<dynamic, dynamic> map) {
+    final timestampRaw = map['timestamp'];
+    final timestamp = timestampRaw is num
+        ? DateTime.fromMillisecondsSinceEpoch(timestampRaw.toInt())
+        : DateTime.now();
+
     return LocationPoint(
       latitude: (map['latitude'] as num).toDouble(),
       longitude: (map['longitude'] as num).toDouble(),
       altitude: (map['altitude'] as num?)?.toDouble() ?? 0,
       speed: (map['speed'] as num?)?.toDouble() ?? 0,
       accuracy: (map['accuracy'] as num?)?.toDouble() ?? 0,
-      timestamp: DateTime.now(),
+      timestamp: timestamp,
     );
   }
 

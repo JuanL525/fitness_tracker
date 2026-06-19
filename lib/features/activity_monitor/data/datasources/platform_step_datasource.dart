@@ -1,23 +1,19 @@
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../../../core/platform/platform_channels.dart';
-import '../../domain/entities/step_data.dart';
 
-/// DataSource para acelerómetro usando EventChannel
-abstract class AccelerometerDataSource {
+import '../../../../core/platform/platform_channels.dart';
+import '../../../auth/domain/entities/step_data.dart';
+
+abstract class PlatformStepDataSource {
   Stream<StepData> get stepStream;
-  Future<void> startCounting();
-  Future<void> stopCounting();
+  Future<void> start();
+  Future<void> stop();
   Future<bool> requestPermissions();
 }
 
-class AccelerometerDataSourceImpl implements AccelerometerDataSource {
+class PlatformStepDataSourceImpl implements PlatformStepDataSource {
   final EventChannel _eventChannel = const EventChannel(
     PlatformChannels.accelerometer,
-  );
-
-  final MethodChannel _methodChannel = const MethodChannel(
-    '${PlatformChannels.accelerometer}/control',
   );
 
   @override
@@ -28,14 +24,10 @@ class AccelerometerDataSourceImpl implements AccelerometerDataSource {
   }
 
   @override
-  Future<void> startCounting() async {
-    await _methodChannel.invokeMethod('start');
-  }
+  Future<void> start() async {}
 
   @override
-  Future<void> stopCounting() async {
-    await _methodChannel.invokeMethod('stop');
-  }
+  Future<void> stop() async {}
 
   @override
   Future<bool> requestPermissions() async {

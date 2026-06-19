@@ -1,5 +1,7 @@
 package com.example.fitness_flutter
 
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -147,128 +149,265 @@ class MainActivity: FlutterFragmentActivity() {
     }
 
     /**
-     * Configurar EventChannel para acelerómetro
+     * Hub compartido: un solo registro de sensores, varios clientes Flutter.
+     * Pasos vía STEP_COUNTER (estable); actividad por cadencia (pasos/min).
      */
+    private class AccelerometerStreamHub(
+        private val sensorManager: SensorManager,
+        private val accelerometer: Sensor?,
+        private val stepCounter: Sensor?,
+        private val stepDetector: Sensor?,
+    ) {
+        private val sinks = mutableSetOf<EventChannel.EventSink>()
+        private var accelListener: SensorEventListener? = null
+        private var stepListener: SensorEventListener? = null
+
+        var stepCount = 0
+        private var stepCounterBaseline = -1f
+        private var lastMagnitude = 9.8
+        private val stepCountHistory = ArrayDeque<Pair<Long, Int>>()
+        private var sessionResetAt = 0L
+        private val spmWarmupMs = 4_000L
+        private val spmWindowMs = 3_000L
+        private val spmMinWindowMs = 1_500L
+        private val tickIntervalMs = 1_000L
+        private val mainHandler = Handler(Looper.getMainLooper())
+        private var ticking = false
+
+        private val tickRunnable = object : Runnable {
+            override fun run() {
+                if (sinks.isEmpty()) {
+                    ticking = false
+                    return
+                }
+                pushUpdate()
+                mainHandler.postDelayed(this, tickIntervalMs)
+            }
+        }
+
+        fun addSink(sink: EventChannel.EventSink) {
+            sinks.add(sink)
+            if (sinks.size == 1) {
+                registerSensors()
+            }
+            pushUpdate()
+        }
+
+        fun removeLastSink() {
+            if (sinks.isEmpty()) return
+            val last = sinks.last()
+            sinks.remove(last)
+            if (sinks.isEmpty()) {
+                unregisterSensors()
+            }
+        }
+
+        fun resetSteps() {
+            stepCount = 0
+            stepCounterBaseline = -1f
+            stepCountHistory.clear()
+            sessionResetAt = System.currentTimeMillis()
+            pushUpdate()
+        }
+
+        private fun registerSensors() {
+            startTicking()
+            stepListener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent?) {
+                    event ?: return
+                    when (event.sensor.type) {
+                        Sensor.TYPE_STEP_COUNTER -> {
+                            val total = event.values[0]
+                            if (stepCounterBaseline < 0f) {
+                                stepCounterBaseline = total
+                                pushUpdate()
+                                return
+                            }
+                            val newCount = (total - stepCounterBaseline).toInt()
+                                .coerceAtLeast(0)
+                            if (newCount < stepCount) {
+                                return
+                            }
+                            if (newCount != stepCount) {
+                                stepCount = newCount
+                                recordStepCountSnapshot()
+                                pushUpdate()
+                            }
+                        }
+                        Sensor.TYPE_STEP_DETECTOR -> {
+                            stepCount++
+                            recordStepCountSnapshot()
+                            pushUpdate()
+                        }
+                    }
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+
+            when {
+                stepCounter != null -> sensorManager.registerListener(
+                    stepListener,
+                    stepCounter,
+                    SensorManager.SENSOR_DELAY_NORMAL
+                )
+                stepDetector != null -> sensorManager.registerListener(
+                    stepListener,
+                    stepDetector,
+                    SensorManager.SENSOR_DELAY_NORMAL
+                )
+            }
+
+            accelListener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent?) {
+                    event ?: return
+                    val x = event.values[0]
+                    val y = event.values[1]
+                    val z = event.values[2]
+                    lastMagnitude = sqrt((x * x + y * y + z * z).toDouble())
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+
+            accelerometer?.let {
+                sensorManager.registerListener(
+                    accelListener,
+                    it,
+                    SensorManager.SENSOR_DELAY_UI
+                )
+            }
+        }
+
+        private fun unregisterSensors() {
+            stopTicking()
+            stepListener?.let { sensorManager.unregisterListener(it) }
+            accelListener?.let { sensorManager.unregisterListener(it) }
+            stepListener = null
+            accelListener = null
+        }
+
+        private fun startTicking() {
+            if (ticking) return
+            ticking = true
+            mainHandler.postDelayed(tickRunnable, tickIntervalMs)
+        }
+
+        private fun stopTicking() {
+            mainHandler.removeCallbacks(tickRunnable)
+            ticking = false
+        }
+
+        private fun recordStepCountSnapshot() {
+            val now = System.currentTimeMillis()
+            stepCountHistory.addLast(now to stepCount)
+            while (stepCountHistory.isNotEmpty() &&
+                now - stepCountHistory.first().first > 10_000
+            ) {
+                stepCountHistory.removeFirst()
+            }
+        }
+
+        private fun stepsSince(windowMs: Long, now: Long = System.currentTimeMillis()): Int {
+            val cutoff = now - windowMs
+            var baseline = stepCount
+            for (entry in stepCountHistory) {
+                if (entry.first <= cutoff) {
+                    baseline = entry.second
+                }
+            }
+            return (stepCount - baseline).coerceAtLeast(0)
+        }
+
+        private fun computeStepsPerMinute(): Double {
+            val now = System.currentTimeMillis()
+            if (now - sessionResetAt < spmWarmupMs) {
+                return 0.0
+            }
+
+            val recentSteps = stepsSince(spmWindowMs, now)
+            if (recentSteps <= 0) {
+                return 0.0
+            }
+
+            var oldestRelevantTime = now
+            val cutoff = now - spmWindowMs
+            for (entry in stepCountHistory) {
+                if (entry.first >= cutoff) {
+                    oldestRelevantTime = entry.first
+                    break
+                }
+                oldestRelevantTime = entry.first
+            }
+
+            val elapsedMs = now - oldestRelevantTime
+            if (elapsedMs < spmMinWindowMs) {
+                return 0.0
+            }
+
+            return recentSteps / (elapsedMs / 60_000.0)
+        }
+
+        private fun activityFromCadence(spm: Double): String {
+            return when {
+                spm >= 130.0 -> "running"
+                spm >= 65.0 -> "walking"
+                else -> "stationary"
+            }
+        }
+
+        private fun pushUpdate() {
+            if (sinks.isEmpty()) return
+            val spm = computeStepsPerMinute()
+            val data = mapOf(
+                "stepCount" to stepCount,
+                "activityType" to activityFromCadence(spm),
+                "magnitude" to lastMagnitude,
+                "stepsPerMinute" to spm
+            )
+            sinks.forEach { sink ->
+                sink.success(data)
+            }
+        }
+    }
+
     private fun setupAccelerometerChannel(flutterEngine: FlutterEngine) {
         val sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val stepCounter = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
 
-        var stepCount = 0
-        var lastMagnitude = 0.0
-        var sensorEventListener: SensorEventListener? = null
+        val hub = AccelerometerStreamHub(
+            sensorManager,
+            accelerometer,
+            stepCounter,
+            stepDetector
+        )
 
-        // Variables para suavizado
-        val magnitudeHistory = mutableListOf<Double>()
-        val historySize = 10
-        var sampleCount = 0
-        var lastActivityType = "stationary"
-        var activityConfidence = 0
-
-        // ═══════════════════════════════════════════════════════════
-        // CONFIGURAR EVENT CHANNEL
-        // ═══════════════════════════════════════════════════════════
         EventChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             ACCELEROMETER_CHANNEL
         ).setStreamHandler(object : EventChannel.StreamHandler {
 
             override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                sensorEventListener = object : SensorEventListener {
-
-                    override fun onSensorChanged(event: SensorEvent?) {
-                        event?.let {
-                            // Calcular magnitud del vector
-                            val x = it.values[0]
-                            val y = it.values[1]
-                            val z = it.values[2]
-                            val magnitude = sqrt((x * x + y * y + z * z).toDouble())
-
-                            // Promedio móvil para suavizar
-                            magnitudeHistory.add(magnitude)
-                            if (magnitudeHistory.size > historySize) {
-                                magnitudeHistory.removeAt(0)
-                            }
-                            val avgMagnitude = magnitudeHistory.average()
-
-                            // Detectar paso
-                            if (magnitude > 12 && lastMagnitude <= 12) {
-                                stepCount++
-                            }
-                            lastMagnitude = magnitude
-
-                            // Determinar actividad (con promedio)
-                            val newActivityType = when {
-                                avgMagnitude < 10.5 -> "stationary"
-                                avgMagnitude < 13.5 -> "walking"
-                                else -> "running"
-                            }
-
-                            // Solo cambiar si hay confianza
-                            if (newActivityType == lastActivityType) {
-                                activityConfidence++
-                            } else {
-                                activityConfidence = 0
-                            }
-
-                            val finalActivityType = if (activityConfidence >= 3) {
-                                newActivityType
-                            } else {
-                                lastActivityType
-                            }
-                            lastActivityType = newActivityType
-
-                            // Enviar cada 3 muestras
-                            sampleCount++
-                            if (sampleCount >= 3) {
-                                sampleCount = 0
-
-                                // ENVIAR DATOS A FLUTTER
-                                val data = mapOf(
-                                    "stepCount" to stepCount,
-                                    "activityType" to finalActivityType,
-                                    "magnitude" to avgMagnitude
-                                )
-
-                                // events?.success: envía datos al stream
-                                events?.success(data)
-                            }
-                        }
-                    }
-
-                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-                }
-
-                // Registrar listener del sensor
-                sensorManager.registerListener(
-                    sensorEventListener,
-                    accelerometer,
-                    SensorManager.SENSOR_DELAY_GAME
-                )
+                events?.let { hub.addSink(it) }
             }
 
             override fun onCancel(arguments: Any?) {
-                sensorEventListener?.let {
-                    sensorManager.unregisterListener(it)
-                }
-                sensorEventListener = null
+                hub.removeLastSink()
             }
         })
 
-        // MethodChannel auxiliar para control
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "$ACCELEROMETER_CHANNEL/control"
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "start" -> {
-                    stepCount = 0
+                "start", "reset" -> {
+                    hub.resetSteps()
                     result.success(null)
                 }
                 "stop" -> {
-                    result.success(null)
-                }
-                "reset" -> {
-                    stepCount = 0
                     result.success(null)
                 }
                 else -> result.notImplemented()
