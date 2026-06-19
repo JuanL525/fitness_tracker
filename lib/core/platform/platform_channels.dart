@@ -4,7 +4,7 @@ class PlatformChannels {
   // Prevenir instanciación
   PlatformChannels._();
 
-  static const String biometric = 'com.tuinstituto.fitness/biometric';
-  static const String accelerometer = 'com.tuinstituto.fitness/accelerometer';
-  static const String gps = 'com.tuinstituto.fitness/gps';
+  static const String biometric = 'com.example.fitness_flutter/biometric';
+static const String accelerometer = 'com.example.fitness_flutter/accelerometer';
+static const String gps = 'com.example.fitness_flutter/gps';
 }

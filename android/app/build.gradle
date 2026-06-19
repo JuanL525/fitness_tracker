@@ -1,11 +1,11 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("dev.flutter.flutter-gradle-plugin")
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
-    namespace = "com.tuinstituto.fitness_tracker"
+    namespace = "com.example.fitness_flutter"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,28 +15,29 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = JavaVersion.VERSION_1_8
     }
 
     defaultConfig {
-        applicationId = "com.tuinstituto.fitness_tracker"
+        applicationId = "com.example.fitness_flutter"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    // IMPORTANTE: Dependencia de biometría
+    dependencies {
+        implementation "androidx.biometric:biometric:1.1.0"
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.debug
         }
     }
 }
 
 flutter {
     source = "../.."
-}
-
-dependencies {
-    implementation("androidx.biometric:biometric:1.1.0")
 }
