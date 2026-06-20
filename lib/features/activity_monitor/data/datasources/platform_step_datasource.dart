@@ -1,7 +1,6 @@
-import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../../../core/platform/platform_channels.dart';
+import '../../../auth/data/datasources/sensors_step_engine.dart';
 import '../../../auth/domain/entities/step_data.dart';
 
 abstract class PlatformStepDataSource {
@@ -12,22 +11,19 @@ abstract class PlatformStepDataSource {
 }
 
 class PlatformStepDataSourceImpl implements PlatformStepDataSource {
-  final EventChannel _eventChannel = const EventChannel(
-    PlatformChannels.accelerometer,
-  );
+  PlatformStepDataSourceImpl({SensorsStepEngine? engine})
+      : _engine = engine ?? SensorsStepEngine();
+
+  final SensorsStepEngine _engine;
 
   @override
-  Stream<StepData> get stepStream {
-    return _eventChannel.receiveBroadcastStream().map((event) {
-      return StepData.fromMap(event as Map<dynamic, dynamic>);
-    });
-  }
+  Stream<StepData> get stepStream => _engine.stream;
 
   @override
-  Future<void> start() async {}
+  Future<void> start() => _engine.start();
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() => _engine.stop();
 
   @override
   Future<bool> requestPermissions() async {

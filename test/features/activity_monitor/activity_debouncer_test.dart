@@ -59,4 +59,19 @@ void main() {
 
     expect(callCount, 2);
   });
+
+  test('cancelPending prevents pending announcement', () async {
+    final debouncer = ActivityDebouncer(
+      stabilityDuration: const Duration(milliseconds: 200),
+    );
+
+    var callCount = 0;
+    debouncer.listen((_, __) => callCount++);
+
+    debouncer.onCandidate(PhysicalActivityType.walking);
+    debouncer.cancelPending();
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(callCount, 0);
+  });
 }

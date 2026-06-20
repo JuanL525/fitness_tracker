@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'features/auth/data/datasources/biometric_datasource.dart';
+
+import 'core/di/injection.dart';
 import 'features/auth/domain/usecases/authenticate_user.dart';
-import 'features/auth/presentation/bloc/auth_bloc.dart';
-import 'features/auth/presentation/pages/login_page.dart';
+import 'features/activity_history/presentation/pages/activity_history_page.dart';
 import 'features/activity_monitor/presentation/activity_monitor_injection.dart';
 import 'features/activity_monitor/presentation/widgets/activity_monitor_widget.dart';
+import 'features/auth/presentation/bloc/auth_bloc.dart';
+import 'features/auth/presentation/pages/login_page.dart';
 import 'features/steps/presentation/widgets/step_counter_widget.dart';
 import 'features/tracking/presentation/widgets/route_map_widget.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await setupDependencyInjection();
   runApp(const FitnessApp());
 }
 
@@ -19,9 +22,6 @@ class FitnessApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final biometricDataSource = BiometricDataSourceImpl();
-    final authenticateUser = AuthenticateUser(biometricDataSource);
-
     return MaterialApp(
       title: 'Fitness Tracker',
       debugShowCheckedModeBanner: false,
@@ -31,7 +31,7 @@ class FitnessApp extends StatelessWidget {
       ),
       home: ActivityMonitorScope(
         child: BlocProvider(
-          create: (_) => AuthBloc(authenticateUser),
+          create: (_) => AuthBloc(getIt<AuthenticateUser>()),
           child: const AuthWrapper(),
         ),
       ),
@@ -75,6 +75,23 @@ class HomePage extends StatelessWidget {
         backgroundColor: const Color(0xFF6366F1),
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Historial',
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ActivityHistoryPage(
+                    getAllSessions: getIt(),
+                    deleteSession: getIt(),
+                    updateSession: getIt(),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: const SingleChildScrollView(
         padding: EdgeInsets.all(16),

@@ -59,6 +59,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Necesitamos tu ubicación para registrar la ruta y la velocidad durante el ejercicio.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Necesitamos tu ubicación para registrar la ruta y la velocidad durante el ejercicio.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Usamos Face ID para autenticarte de forma segura.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Necesitamos acceso al movimiento del dispositivo para contar pasos y detectar actividad.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

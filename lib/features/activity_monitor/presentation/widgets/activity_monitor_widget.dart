@@ -12,14 +12,23 @@ class ActivityMonitorWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<ActivityMonitorBloc, ActivityMonitorState>(
       builder: (context, state) {
-        final isMonitoring = state is ActivityMonitorActive && state.isMonitoring;
+        final isMonitoring = state.isSessionActive;
         final activity = state is ActivityMonitorActive
             ? state.currentActivity
-            : null;
-        final errorMessage =
-            state is ActivityMonitorActive ? state.errorMessage : null;
-        final fallTestMode =
-            state is ActivityMonitorActive && state.fallTestModeEnabled;
+            : state is FallAlertActive
+                ? state.currentActivity
+                : null;
+        final errorMessage = state is ActivityMonitorActive
+            ? state.errorMessage
+            : state is FallAlertActive
+                ? state.errorMessage
+                : null;
+        final fallTestMode = state is ActivityMonitorActive
+            ? state.fallTestModeEnabled
+            : state is FallAlertActive
+                ? state.fallTestModeEnabled
+                : false;
+        final fallAlertVisible = state is FallAlertActive;
 
         return Card(          elevation: 4,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -81,10 +90,16 @@ class ActivityMonitorWidget extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            isMonitoring
-                                ? 'Escuchando cambios de actividad…'
-                                : 'Presiona Iniciar para comenzar',
-                            style: const TextStyle(color: Colors.grey),
+                            fallAlertVisible
+                                ? 'Alerta de caída activa — responde el diálogo'
+                                : isMonitoring
+                                    ? 'Escuchando cambios de actividad…'
+                                    : 'Presiona Iniciar para comenzar',
+                            style: TextStyle(
+                              color: fallAlertVisible
+                                  ? Colors.orange.shade800
+                                  : Colors.grey,
+                            ),
                           ),
                         ],
                       ),

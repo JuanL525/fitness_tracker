@@ -17,7 +17,7 @@ class FallDetector {
       testSensitivity
           ? const Duration(seconds: 20)
           : const Duration(seconds: 45);
-  Duration get stepQuietPeriod => const Duration(seconds: 10);
+  Duration get stepQuietPeriod => const Duration(seconds: 4);
 
   double _gx = 0;
   double _gy = 0;
@@ -78,6 +78,7 @@ class FallDetector {
 
   void resetAfterUserResponse() {
     _lastFallDetectedAt = DateTime.now();
+    _lastStepAt = null;
   }
 
   double _linearAcceleration(AccelerometerSample sample) {

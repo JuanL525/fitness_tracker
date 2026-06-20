@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/di/injection.dart';
+import '../../activity_history/domain/usecases/save_activity_session.dart';
 import '../data/datasources/accelerometer_sensor_datasource.dart';
 import '../data/datasources/platform_step_datasource.dart';
 import '../data/datasources/sensor_permissions_datasource.dart';
@@ -17,7 +19,7 @@ MonitorActivityUseCase createMonitorActivityUseCase() {
   final stepDataSource = PlatformStepDataSourceImpl();
   final ttsDataSource = TextToSpeechDataSourceImpl();
   final permissionsDataSource = SensorPermissionsDataSourceImpl();
-  final gpsDataSource = GpsDataSourceImpl();
+  final gpsDataSource = getIt<GpsDataSource>();
 
   return MonitorActivityUseCase(
     sensorRepository: ActivitySensorRepositoryImpl(sensorDataSource),
@@ -32,6 +34,7 @@ MonitorActivityUseCase createMonitorActivityUseCase() {
 ActivityMonitorBloc createActivityMonitorBloc() {
   return ActivityMonitorBloc(
     monitorActivity: createMonitorActivityUseCase(),
+    saveActivitySession: getIt<SaveActivitySession>(),
   );
 }
 

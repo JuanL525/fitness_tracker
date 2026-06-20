@@ -50,6 +50,7 @@ class MonitorActivityUseCase {
   int? _previousStepCount;
   double _lastStepsPerMinute = 0;
   MovementSpeed? _lastGps;
+  bool _fallAlertActive = false;
 
   static const _stepActivityGrace = Duration(seconds: 4);
 
@@ -72,6 +73,7 @@ class MonitorActivityUseCase {
     _lastStepIncreaseAt = null;
     _lastStepsPerMinute = 0;
     _lastGps = null;
+    _fallAlertActive = false;
 
     await _startLocationIfAvailable();
 
@@ -107,7 +109,7 @@ class MonitorActivityUseCase {
     _locationSubscription = repo.speedSamples.listen(
       (speed) {
         _lastGps = speed;
-        if (!_isInWarmup) {
+        if (!_isInWarmup && !_fallAlertActive) {
           _evaluateActivity();
         }
       },
@@ -134,6 +136,15 @@ class MonitorActivityUseCase {
   void resetFallDetector() {
     _fallDetector.resetAfterUserResponse();
   }
+
+  void setFallAlertActive(bool active) {
+    _fallAlertActive = active;
+    if (active) {
+      _debouncer.cancelPending();
+    }
+  }
+
+  bool get fallAlertActive => _fallAlertActive;
 
   void setFallTestSensitivity(bool enabled) {
     _fallDetector.setTestSensitivity(enabled);
@@ -182,7 +193,7 @@ class MonitorActivityUseCase {
     _fallDetector.onStepUpdate(data.stepCount);
     _controller.add(StepCountUpdated(data));
 
-    if (_isInWarmup) {
+    if (_fallAlertActive || _isInWarmup) {
       return;
     }
 
@@ -190,7 +201,7 @@ class MonitorActivityUseCase {
   }
 
   void _evaluateActivity() {
-    if (_isInWarmup) {
+    if (_fallAlertActive || _isInWarmup) {
       return;
     }
 
@@ -225,6 +236,8 @@ class MonitorActivityUseCase {
   void _onAccelSample(AccelerometerSample sample) {
     final fall = _fallDetector.process(sample);
     if (fall != null) {
+      _fallAlertActive = true;
+      _debouncer.cancelPending();
       _controller.add(
         FallDetected(
           timestamp: fall.timestamp,
@@ -238,6 +251,10 @@ class MonitorActivityUseCase {
     PhysicalActivityType type,
     bool isFirst,
   ) async {
+    if (_fallAlertActive) {
+      return;
+    }
+
     _controller.add(
       ActivityConfirmed(type: type, isFirstAnnouncement: isFirst),
     );

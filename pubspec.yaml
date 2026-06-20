@@ -1,5 +1,5 @@
 name: fitness_tracker
-description: App de fitness con Platform Channels
+description: App de fitness con plugins oficiales y historial local
 version: 1.0.0
 
 environment:
@@ -22,9 +22,15 @@ dependencies:
   # Manejo de permisos
   permission_handler: ^11.0.1
 
-  # MEGA RETO: sensores y síntesis de voz
+  # Hardware y sensores (plugins oficiales)
+  local_auth: ^2.3.0
+  geolocator: ^13.0.2
   sensors_plus: ^6.1.1
   flutter_tts: ^4.2.0
+
+  # Persistencia local (CRUD de sesiones)
+  sqflite: ^2.4.1
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

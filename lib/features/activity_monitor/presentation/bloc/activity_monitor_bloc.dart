@@ -6,6 +6,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/entities/activity_monitor_event.dart' as domain;
 import '../../domain/entities/physical_activity_type.dart';
 import '../../domain/usecases/monitor_activity.dart';
+import '../../../activity_history/domain/entities/activity_session.dart';
+import '../../../activity_history/domain/usecases/save_activity_session.dart';
+import '../../../activity_history/presentation/pages/activity_history_page.dart';
 
 abstract class ActivityMonitorState extends Equatable {
   const ActivityMonitorState();
@@ -72,21 +75,88 @@ class ActivityMonitorActive extends ActivityMonitorState {
 class FallAlertActive extends ActivityMonitorState {
   final bool escalated;
   final DateTime detectedAt;
+  final PhysicalActivityType? currentActivity;
+  final bool fallTestModeEnabled;
+  final int stepCount;
+  final double stepsPerMinute;
+  final String? errorMessage;
 
   const FallAlertActive({
     required this.escalated,
     required this.detectedAt,
+    this.currentActivity,
+    this.fallTestModeEnabled = false,
+    this.stepCount = 0,
+    this.stepsPerMinute = 0,
+    this.errorMessage,
   });
 
-  FallAlertActive copyWith({bool? escalated}) {
+  bool get isMonitoring => true;
+
+  FallAlertActive copyWith({
+    bool? escalated,
+    PhysicalActivityType? currentActivity,
+    bool? fallTestModeEnabled,
+    int? stepCount,
+    double? stepsPerMinute,
+    String? errorMessage,
+    bool clearError = false,
+  }) {
     return FallAlertActive(
       escalated: escalated ?? this.escalated,
       detectedAt: detectedAt,
+      currentActivity: currentActivity ?? this.currentActivity,
+      fallTestModeEnabled: fallTestModeEnabled ?? this.fallTestModeEnabled,
+      stepCount: stepCount ?? this.stepCount,
+      stepsPerMinute: stepsPerMinute ?? this.stepsPerMinute,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+    );
+  }
+
+  ActivityMonitorActive toActive({
+    bool? fallTestModeEnabled,
+    String? errorMessage,
+    bool clearError = false,
+  }) {
+    return ActivityMonitorActive(
+      currentActivity: currentActivity,
+      isMonitoring: true,
+      fallTestModeEnabled: fallTestModeEnabled ?? this.fallTestModeEnabled,
+      stepCount: stepCount,
+      stepsPerMinute: stepsPerMinute,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
 
   @override
-  List<Object?> get props => [escalated, detectedAt];
+  List<Object?> get props => [
+        escalated,
+        detectedAt,
+        currentActivity,
+        fallTestModeEnabled,
+        stepCount,
+        stepsPerMinute,
+        errorMessage,
+      ];
+}
+
+extension ActivityMonitorStateX on ActivityMonitorState {
+  bool get isSessionActive {
+    if (this is ActivityMonitorActive) {
+      return (this as ActivityMonitorActive).isMonitoring;
+    }
+    return this is FallAlertActive;
+  }
+
+  ActivityMonitorActive? get sessionSnapshot {
+    if (this is ActivityMonitorActive) {
+      return this as ActivityMonitorActive;
+    }
+    if (this is FallAlertActive) {
+      return (this as FallAlertActive).toActive();
+    }
+    return null;
+  }
 }
 
 abstract class ActivityMonitorBlocEvent extends Equatable {
@@ -135,8 +205,11 @@ class _InternalMonitorEvent extends ActivityMonitorBlocEvent {
 
 class ActivityMonitorBloc
     extends Bloc<ActivityMonitorBlocEvent, ActivityMonitorState> {
-  ActivityMonitorBloc({required MonitorActivityUseCase monitorActivity})
-      : _monitorActivity = monitorActivity,
+  ActivityMonitorBloc({
+    required MonitorActivityUseCase monitorActivity,
+    SaveActivitySession? saveActivitySession,
+  })  : _monitorActivity = monitorActivity,
+        _saveActivitySession = saveActivitySession,
         super(const ActivityMonitorInitial()) {
     on<StartMonitoring>(_onStartMonitoring);
     on<StopMonitoring>(_onStopMonitoring);
@@ -149,8 +222,10 @@ class ActivityMonitorBloc
   }
 
   final MonitorActivityUseCase _monitorActivity;
+  final SaveActivitySession? _saveActivitySession;
   StreamSubscription<domain.ActivityMonitorEvent>? _subscription;
   Timer? _fallTimer;
+  DateTime? _sessionStartedAt;
 
   Future<void> _onStartMonitoring(
     StartMonitoring event,
@@ -171,17 +246,49 @@ class ActivityMonitorBloc
           errorMessage: 'Permisos de sensores denegados',
         ),
       );
+      return;
     }
+
+    _sessionStartedAt = DateTime.now();
   }
 
   Future<void> _onStopMonitoring(
     StopMonitoring event,
     Emitter<ActivityMonitorState> emit,
   ) async {
+    final snapshot = state.sessionSnapshot;
+    if (snapshot != null && _sessionStartedAt != null) {
+      await _persistSession(snapshot);
+    }
+
+    _sessionStartedAt = null;
     _fallTimer?.cancel();
+    _monitorActivity.setFallAlertActive(false);
     await _subscription?.cancel();
     await _monitorActivity.stop();
     emit(const ActivityMonitorIdle());
+  }
+
+  Future<void> _persistSession(ActivityMonitorActive sessionState) async {
+    final saveSession = _saveActivitySession;
+    final startedAt = _sessionStartedAt;
+    if (saveSession == null || startedAt == null) {
+      return;
+    }
+
+    final duration = DateTime.now().difference(startedAt);
+    if (duration.inSeconds < 1 && sessionState.stepCount == 0) {
+      return;
+    }
+
+    await saveSession(
+      ActivitySession(
+        date: startedAt,
+        duration: duration,
+        totalSteps: sessionState.stepCount,
+        primaryActivityType: activityTypeToStorage(sessionState.currentActivity),
+      ),
+    );
   }
 
   Future<void> _onInternalEvent(
@@ -201,6 +308,17 @@ class ActivityMonitorBloc
     }
 
     if (monitorEvent is domain.StepCountUpdated) {
+      if (state is FallAlertActive) {
+        final current = state as FallAlertActive;
+        emit(
+          current.copyWith(
+            stepCount: monitorEvent.stepData.stepCount,
+            stepsPerMinute: monitorEvent.stepData.stepsPerMinute,
+          ),
+        );
+        return;
+      }
+
       final current = state;
       if (current is ActivityMonitorActive) {
         emit(
@@ -210,7 +328,7 @@ class ActivityMonitorBloc
             isMonitoring: true,
           ),
         );
-      } else if (current is! FallAlertActive) {
+      } else {
         emit(
           ActivityMonitorActive(
             stepCount: monitorEvent.stepData.stepCount,
@@ -223,6 +341,10 @@ class ActivityMonitorBloc
     }
 
     if (monitorEvent is domain.ActivityConfirmed) {
+      if (state is FallAlertActive) {
+        return;
+      }
+
       final current = state;
       if (current is ActivityMonitorActive) {
         emit(
@@ -255,10 +377,24 @@ class ActivityMonitorBloc
     DateTime detectedAt,
   ) async {
     _fallTimer?.cancel();
+
+    final current = state;
+    final active = current is ActivityMonitorActive
+        ? current
+        : current is FallAlertActive
+            ? current.toActive()
+            : const ActivityMonitorActive(isMonitoring: true);
+
+    _monitorActivity.setFallAlertActive(true);
     emit(
       FallAlertActive(
         escalated: false,
         detectedAt: detectedAt,
+        currentActivity: active.currentActivity,
+        fallTestModeEnabled: active.fallTestModeEnabled,
+        stepCount: active.stepCount,
+        stepsPerMinute: active.stepsPerMinute,
+        errorMessage: active.errorMessage,
       ),
     );
     await _monitorActivity.announceFallPrompt();
@@ -272,13 +408,18 @@ class ActivityMonitorBloc
     Emitter<ActivityMonitorState> emit,
   ) {
     final current = state;
-    if (current is! ActivityMonitorActive) {
+    if (current is ActivityMonitorActive) {
+      final enabled = !current.fallTestModeEnabled;
+      _monitorActivity.setFallTestSensitivity(enabled);
+      emit(current.copyWith(fallTestModeEnabled: enabled));
       return;
     }
 
-    final enabled = !current.fallTestModeEnabled;
-    _monitorActivity.setFallTestSensitivity(enabled);
-    emit(current.copyWith(fallTestModeEnabled: enabled));
+    if (current is FallAlertActive) {
+      final enabled = !current.fallTestModeEnabled;
+      _monitorActivity.setFallTestSensitivity(enabled);
+      emit(current.copyWith(fallTestModeEnabled: enabled));
+    }
   }
 
   Future<void> _onSimulateFallAlert(
@@ -293,20 +434,19 @@ class ActivityMonitorBloc
     Emitter<ActivityMonitorState> emit,
   ) {
     _fallTimer?.cancel();
+    _monitorActivity.setFallAlertActive(false);
     _monitorActivity.resetFallDetector();
     final testMode = _monitorActivity.fallTestSensitivity;
-    final previous = state;
-    if (previous is ActivityMonitorActive) {
-      emit(
-        previous.copyWith(
-          isMonitoring: true,
-          fallTestModeEnabled: testMode,
-          clearError: true,
-        ),
-      );
-    } else {
-      emit(ActivityMonitorActive(isMonitoring: true, fallTestModeEnabled: testMode));
-    }
+    final current = state;
+
+    emit(
+      current is FallAlertActive
+          ? current.toActive(fallTestModeEnabled: testMode, clearError: true)
+          : ActivityMonitorActive(
+              isMonitoring: true,
+              fallTestModeEnabled: testMode,
+            ),
+    );
   }
 
   void _onFallNeedsHelp(
@@ -314,26 +454,23 @@ class ActivityMonitorBloc
     Emitter<ActivityMonitorState> emit,
   ) {
     _fallTimer?.cancel();
+    _monitorActivity.setFallAlertActive(false);
     _monitorActivity.resetFallDetector();
     final testMode = _monitorActivity.fallTestSensitivity;
-    final previous = state;
-    if (previous is ActivityMonitorActive) {
-      emit(
-        previous.copyWith(
-          isMonitoring: true,
-          fallTestModeEnabled: testMode,
-          errorMessage: 'Alerta registrada: necesitas ayuda',
-        ),
-      );
-    } else {
-      emit(
-        ActivityMonitorActive(
-          isMonitoring: true,
-          fallTestModeEnabled: testMode,
-          errorMessage: 'Alerta registrada: necesitas ayuda',
-        ),
-      );
-    }
+    final current = state;
+
+    emit(
+      current is FallAlertActive
+          ? current.toActive(
+              fallTestModeEnabled: testMode,
+              errorMessage: 'Alerta registrada: necesitas ayuda',
+            )
+          : ActivityMonitorActive(
+              isMonitoring: true,
+              fallTestModeEnabled: testMode,
+              errorMessage: 'Alerta registrada: necesitas ayuda',
+            ),
+    );
   }
 
   void _onFallTimeoutElapsed(

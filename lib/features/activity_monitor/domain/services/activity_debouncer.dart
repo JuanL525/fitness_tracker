@@ -70,6 +70,11 @@ class ActivityDebouncer {
     _lastAnnounced = null;
   }
 
+  void cancelPending() {
+    _timer?.cancel();
+    _candidate = null;
+  }
+
   void dispose() {
     _timer?.cancel();
     _onConfirmed = null;

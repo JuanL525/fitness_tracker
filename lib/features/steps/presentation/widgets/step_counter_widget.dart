@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/di/injection.dart';
 import '../../../auth/data/datasources/accelerometer_datasource.dart';
 import '../../../auth/domain/entities/step_data.dart';
 import '../../../activity_monitor/domain/entities/physical_activity_type.dart';
@@ -14,7 +15,7 @@ class StepCounterWidget extends StatefulWidget {
 }
 
 class _StepCounterWidgetState extends State<StepCounterWidget> {
-  final AccelerometerDataSource _dataSource = AccelerometerDataSourceImpl();
+  late final AccelerometerDataSource _dataSource = getIt<AccelerometerDataSource>();
 
   StreamSubscription<StepData>? _subscription;
   StepData? _localData;
@@ -80,18 +81,31 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
 
   StepData? _displayData(ActivityMonitorState monitorState) {
     final local = _localData;
-    if (monitorState is ActivityMonitorActive && monitorState.isMonitoring) {
-      final count = monitorState.stepCount;
+    if (monitorState.isSessionActive) {
+      final count = monitorState is ActivityMonitorActive
+          ? monitorState.stepCount
+          : monitorState is FallAlertActive
+              ? monitorState.stepCount
+              : 0;
+      final stepsPerMinute = monitorState is ActivityMonitorActive
+          ? monitorState.stepsPerMinute
+          : monitorState is FallAlertActive
+              ? monitorState.stepsPerMinute
+              : 0.0;
+      final currentActivity = monitorState is ActivityMonitorActive
+          ? monitorState.currentActivity
+          : monitorState is FallAlertActive
+              ? monitorState.currentActivity
+              : null;
+
       return StepData(
         stepCount: count,
-        activityType: _mapActivity(monitorState.currentActivity) !=
-                ActivityType.stationary
-            ? _mapActivity(monitorState.currentActivity)
+        activityType: _mapActivity(currentActivity) != ActivityType.stationary
+            ? _mapActivity(currentActivity)
             : (local?.activityType ?? ActivityType.stationary),
         magnitude: local?.magnitude ?? 9.8,
-        stepsPerMinute: monitorState.stepsPerMinute > 0
-            ? monitorState.stepsPerMinute
-            : (local?.stepsPerMinute ?? 0),
+        stepsPerMinute:
+            stepsPerMinute > 0 ? stepsPerMinute : (local?.stepsPerMinute ?? 0),
       );
     }
     return local;
@@ -115,8 +129,7 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
       builder: (context, monitorState) {
         final data = _displayData(monitorState);
         final isLive =
-            _isTracking ||
-            (monitorState is ActivityMonitorActive && monitorState.isMonitoring);
+            _isTracking || monitorState.isSessionActive;
 
         return Card(
           elevation: 4,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Route;
 import 'dart:async';
+import '../../../../core/di/injection.dart';
 import '../../data/datasources/gps_datasource.dart';
 import '../../domain/entities/location_point.dart';
 
@@ -11,7 +12,7 @@ class RouteMapWidget extends StatefulWidget {
 }
 
 class _RouteMapWidgetState extends State<RouteMapWidget> {
-  final GpsDataSource _dataSource = GpsDataSourceImpl();
+  late final GpsDataSource _dataSource = getIt<GpsDataSource>();
   final Route _route = Route();
 
   StreamSubscription<LocationPoint>? _subscription;
