@@ -23,10 +23,10 @@ void main() {
         classifier.classify(stepsPerMinute: 125, stepsStillComing: true),
         PhysicalActivityType.running,
       );
-      expect(
-        classifier.classify(stepsPerMinute: 90, stepsStillComing: true),
-        PhysicalActivityType.walking,
-      );
+      for (var i = 0; i < 6; i++) {
+        classifier.classify(stepsPerMinute: 90, stepsStillComing: true);
+      }
+      expect(classifier.current, PhysicalActivityType.walking);
     });
 
     test('does not enter stationary while cadence indicates movement', () {
@@ -41,10 +41,21 @@ void main() {
     test('enters stationary only after movement stops and spm is low', () {
       final classifier = StepCadenceClassifier();
       classifier.classify(stepsPerMinute: 80, stepsStillComing: true);
-      expect(
-        classifier.classify(stepsPerMinute: 20, stepsStillComing: false),
-        PhysicalActivityType.stationary,
-      );
+      for (var i = 0; i < 20; i++) {
+        classifier.classify(stepsPerMinute: 20, stepsStillComing: false);
+      }
+      expect(classifier.current, PhysicalActivityType.stationary);
+    });
+
+    test('ignores brief cadence spikes while walking', () {
+      final classifier = StepCadenceClassifier();
+      for (var i = 0; i < 5; i++) {
+        classifier.classify(stepsPerMinute: 85, stepsStillComing: true);
+      }
+      expect(classifier.current, PhysicalActivityType.walking);
+
+      classifier.classify(stepsPerMinute: 160, stepsStillComing: true);
+      expect(classifier.current, PhysicalActivityType.walking);
     });
   });
 }

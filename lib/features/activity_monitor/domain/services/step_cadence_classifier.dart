@@ -11,9 +11,11 @@ class StepCadenceClassifier {
   static const double movementHoldSpm = 40;
 
   PhysicalActivityType _state = PhysicalActivityType.stationary;
+  double _smoothedSpm = 0.0;
 
   void reset() {
     _state = PhysicalActivityType.stationary;
+    _smoothedSpm = 0.0;
   }
 
   PhysicalActivityType get current => _state;
@@ -22,10 +24,17 @@ class StepCadenceClassifier {
     required double stepsPerMinute,
     required bool stepsStillComing,
   }) {
-    final movementLikely =
-        stepsStillComing || stepsPerMinute >= movementHoldSpm;
+    if (_smoothedSpm == 0.0) {
+      _smoothedSpm = stepsPerMinute;
+    } else {
+      _smoothedSpm = (_smoothedSpm * 0.85) + (stepsPerMinute * 0.15);
+    }
+    final effectiveSpm = _smoothedSpm;
 
-    if (movementLikely && stepsPerMinute < enterStationary) {
+    final movementLikely =
+        stepsStillComing || effectiveSpm >= movementHoldSpm;
+
+    if (movementLikely && effectiveSpm < enterStationary) {
       if (_state != PhysicalActivityType.stationary) {
         return _state;
       }
@@ -33,34 +42,34 @@ class StepCadenceClassifier {
 
     switch (_state) {
       case PhysicalActivityType.running:
-        if (stepsPerMinute >= exitRunning) {
+        if (effectiveSpm >= exitRunning) {
           return _state = PhysicalActivityType.running;
         }
-        if (stepsPerMinute >= enterWalking) {
+        if (effectiveSpm >= enterWalking) {
           return _state = PhysicalActivityType.walking;
         }
-        if (!movementLikely && stepsPerMinute <= enterStationary) {
+        if (!movementLikely && effectiveSpm <= enterStationary) {
           return _state = PhysicalActivityType.stationary;
         }
         return _state;
 
       case PhysicalActivityType.walking:
-        if (stepsPerMinute >= enterRunning) {
+        if (effectiveSpm >= enterRunning) {
           return _state = PhysicalActivityType.running;
         }
-        if (stepsPerMinute >= exitWalking) {
+        if (effectiveSpm >= exitWalking) {
           return _state = PhysicalActivityType.walking;
         }
-        if (!movementLikely && stepsPerMinute <= enterStationary) {
+        if (!movementLikely && effectiveSpm <= enterStationary) {
           return _state = PhysicalActivityType.stationary;
         }
         return _state;
 
       case PhysicalActivityType.stationary:
-        if (stepsPerMinute >= enterRunning) {
+        if (effectiveSpm >= enterRunning) {
           return _state = PhysicalActivityType.running;
         }
-        if (stepsPerMinute >= enterWalking) {
+        if (effectiveSpm >= enterWalking) {
           return _state = PhysicalActivityType.walking;
         }
         return _state;

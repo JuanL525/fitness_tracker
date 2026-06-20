@@ -24,30 +24,28 @@ void main() {
       );
     });
 
-    test('requires high cadence to switch to running', () {
+    test('requires sustained high cadence to switch to running', () {
       final classifier = HybridActivityClassifier();
 
-      classifier.classifyMovement(
-        stepsPerMinute: 100,
-        stepsStillComing: true,
-        gps: null,
-      );
-      expect(
+      for (var i = 0; i < 5; i++) {
         classifier.classifyMovement(
-          stepsPerMinute: 130,
+          stepsPerMinute: 100,
           stepsStillComing: true,
           gps: null,
-        ),
-        PhysicalActivityType.running,
-      );
-      expect(
+        );
+      }
+      expect(classifier.current, PhysicalActivityType.walking);
+
+      // EWMA from ~100 SPM never reaches enterRunning (130) with 130 SPM alone;
+      // sustained readings above the threshold are required.
+      for (var i = 0; i < 8; i++) {
         classifier.classifyMovement(
           stepsPerMinute: 150,
           stepsStillComing: true,
           gps: null,
-        ),
-        PhysicalActivityType.running,
-      );
+        );
+      }
+      expect(classifier.current, PhysicalActivityType.running);
     });
 
     test('forces stationary when GPS confirms stop', () {
