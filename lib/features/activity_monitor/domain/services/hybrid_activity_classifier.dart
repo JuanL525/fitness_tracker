@@ -4,7 +4,7 @@ import 'speed_activity_classifier.dart';
 import 'speed_smoother.dart';
 import 'step_cadence_classifier.dart';
 
-/// Caminar/correr por cadencia de pasos; GPS solo confirma quietud.
+/// Caminar/correr por cadencia de pasos; GPS confirma quietud y corrige walk/run.
 class HybridActivityClassifier {
   HybridActivityClassifier({
     SpeedActivityClassifier? speedClassifier,
@@ -43,13 +43,16 @@ class HybridActivityClassifier {
     return stepsPerMinute <= 5;
   }
 
+  static const double _walkingToRunningSpeedMps = 2.2;
+
   PhysicalActivityType classifyMovement({
     required double stepsPerMinute,
     required bool stepsStillComing,
     MovementSpeed? gps,
   }) {
+    double? smoothedSpeed;
     if (gps?.isReliable == true) {
-      _speedSmoother.smooth(gps!.metersPerSecond);
+      smoothedSpeed = _speedSmoother.smooth(gps!.metersPerSecond);
     }
 
     final cadenceType = _cadenceClassifier.classify(
@@ -58,11 +61,16 @@ class HybridActivityClassifier {
     );
 
     if (cadenceType == PhysicalActivityType.stationary &&
-        gps?.isReliable == true) {
-      final smoothed = _speedSmoother.smooth(gps!.metersPerSecond);
-      if (!_speedClassifier.isLikelyStationary(smoothed)) {
+        smoothedSpeed != null) {
+      if (!_speedClassifier.isLikelyStationary(smoothedSpeed)) {
         return PhysicalActivityType.walking;
       }
+    }
+
+    if (cadenceType == PhysicalActivityType.walking &&
+        smoothedSpeed != null &&
+        smoothedSpeed > _walkingToRunningSpeedMps) {
+      return PhysicalActivityType.running;
     }
 
     return cadenceType;

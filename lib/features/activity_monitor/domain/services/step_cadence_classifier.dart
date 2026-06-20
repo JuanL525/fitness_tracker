@@ -3,10 +3,10 @@ import '../entities/physical_activity_type.dart';
 
 /// Cadencia de pasos: fuente principal para caminar vs correr.
 class StepCadenceClassifier {
-  static const double enterWalking = 70;
-  static const double exitWalking = 55;
-  static const double enterRunning = 145;
-  static const double exitRunning = 120;
+  static const double enterWalking = 65;
+  static const double exitWalking = 50;
+  static const double enterRunning = 130;
+  static const double exitRunning = 115;
   static const double enterStationary = 25;
   static const double movementHoldSpm = 40;
 

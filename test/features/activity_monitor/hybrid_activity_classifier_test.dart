@@ -6,7 +6,7 @@ import 'package:fitness_tracker/features/activity_monitor/domain/services/step_c
 
 void main() {
   group('HybridActivityClassifier', () {
-    test('uses cadence for walk vs run, not noisy GPS speed', () {
+    test('overrides walking to running when GPS speed exceeds threshold', () {
       final classifier = HybridActivityClassifier();
       final gps = MovementSpeed(
         metersPerSecond: 3.5,
@@ -20,7 +20,7 @@ void main() {
           stepsStillComing: true,
           gps: gps,
         ),
-        PhysicalActivityType.walking,
+        PhysicalActivityType.running,
       );
     });
 
@@ -38,7 +38,7 @@ void main() {
           stepsStillComing: true,
           gps: null,
         ),
-        PhysicalActivityType.walking,
+        PhysicalActivityType.running,
       );
       expect(
         classifier.classifyMovement(
