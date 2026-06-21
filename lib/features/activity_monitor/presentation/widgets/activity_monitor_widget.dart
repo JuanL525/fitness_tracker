@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../../domain/entities/physical_activity_type.dart';
 import '../bloc/activity_monitor_bloc.dart';
 
@@ -29,123 +31,127 @@ class ActivityMonitorWidget extends StatelessWidget {
                 ? state.fallTestModeEnabled
                 : false;
         final fallAlertVisible = state is FallAlertActive;
+        final scheme = Theme.of(context).colorScheme;
 
-        return Card(          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Monitor de Actividad',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        if (isMonitoring) {
-                          context
-                              .read<ActivityMonitorBloc>()
-                              .add(const StopMonitoring());
-                        } else {
-                          context
-                              .read<ActivityMonitorBloc>()
-                              .add(const StartMonitoring());
-                        }
-                      },
-                      icon: Icon(isMonitoring ? Icons.stop : Icons.play_arrow),
-                      label: Text(isMonitoring ? 'Detener' : 'Iniciar'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isMonitoring ? Colors.red : Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                Row(
-                  children: [
-                    Icon(
-                      _activityIcon(activity),
-                      size: 48,
-                      color: const Color(0xFF6366F1),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            activity?.displayName ?? 'Sin actividad detectada',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
+        return FeatureCard(
+          animationIndex: 2,
+          accentColor: AppTheme.monitorAccent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionHeader(
+                title: 'Monitor de Actividad',
+                subtitle: fallAlertVisible
+                    ? 'Alerta de caída activa'
+                    : isMonitoring
+                        ? 'Escuchando cambios de actividad'
+                        : 'Presiona Iniciar para comenzar',
+                isActive: isMonitoring,
+                onToggle: () {
+                  if (isMonitoring) {
+                    context
+                        .read<ActivityMonitorBloc>()
+                        .add(const StopMonitoring());
+                  } else {
+                    context
+                        .read<ActivityMonitorBloc>()
+                        .add(const StartMonitoring());
+                  }
+                },
+                icon: Icons.monitor_heart_rounded,
+                accentColor: AppTheme.monitorAccent,
+                activeSubtitleColor: AppTheme.orange,
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AccentIconBadge(
+                    icon: _activityIcon(activity),
+                    color: _activityColor(activity),
+                    size: 56,
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          activity?.displayName ?? 'Sin actividad detectada',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        AnimatedSwitcher(
+                          duration: AppTheme.animFast,
+                          child: Text(
                             fallAlertVisible
-                                ? 'Alerta de caída activa — responde el diálogo'
+                                ? 'Responde el diálogo para continuar'
                                 : isMonitoring
-                                    ? 'Escuchando cambios de actividad…'
-                                    : 'Presiona Iniciar para comenzar',
-                            style: TextStyle(
-                              color: fallAlertVisible
-                                  ? Colors.orange.shade800
-                                  : Colors.grey,
+                                    ? 'Detección de caminata, carrera y caídas'
+                                    : 'Inicia el monitor para comenzar',
+                            key: ValueKey(
+                              fallAlertVisible
+                                  ? 'fall'
+                                  : isMonitoring
+                                      ? 'on'
+                                      : 'off',
                             ),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: fallAlertVisible
+                                      ? AppTheme.red
+                                      : scheme.onSurfaceVariant,
+                                ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                if (errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    errorMessage,
-                    style: TextStyle(color: Colors.red.shade700),
                   ),
                 ],
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.indigo.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    fallTestMode
-                        ? 'Modo prueba: sacudida fuerte dispara alerta al instante.'
-                        : 'Voz según pasos/min: caminar ≥65, correr ≥130. '
-                            'Caída solo con sacudida fuerte y sin pasos recientes. '
-                            'Inicia también el Contador de Pasos.',
-                    style: const TextStyle(fontSize: 13),
-                  ),
+              ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 20),
+                InfoBanner(
+                  message: errorMessage,
+                  icon: Icons.error_outline_rounded,
+                  backgroundColor: AppTheme.redBg,
+                  iconColor: AppTheme.red,
+                  borderColor: AppTheme.red,
                 ),
-                if (isMonitoring) ...[
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Modo prueba de caída'),
-                    subtitle: const Text(
-                      'Umbrales más bajos para sacudidas de prueba',
-                    ),
-                    value: fallTestMode,
-                    onChanged: (_) {
-                      context
-                          .read<ActivityMonitorBloc>()
-                          .add(const ToggleFallTestMode());
-                    },
+              ],
+              const SizedBox(height: 24),
+              InfoBanner(
+                message: fallTestMode
+                    ? 'Modo prueba: sacudida fuerte dispara alerta al instante.'
+                    : 'Voz según pasos/min: caminar ≥65, correr ≥130. '
+                        'Caída solo con sacudida fuerte y sin pasos recientes.',
+                icon: Icons.tips_and_updates_outlined,
+                backgroundColor: AppTheme.yellowBg,
+                iconColor: AppTheme.orange,
+                borderColor: AppTheme.orange,
+              ),
+              if (isMonitoring) ...[
+                const SizedBox(height: 20),
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  OutlinedButton.icon(
+                  tileColor: AppTheme.orangeBg,
+                  title: const Text('Modo prueba de caída'),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('Umbrales más bajos para sacudidas de prueba'),
+                  ),
+                  value: fallTestMode,
+                  onChanged: (_) {
+                    context
+                        .read<ActivityMonitorBloc>()
+                        .add(const ToggleFallTestMode());
+                  },
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
                     onPressed: () {
                       context
                           .read<ActivityMonitorBloc>()
@@ -158,24 +164,37 @@ class ActivityMonitorWidget extends StatelessWidget {
                           : 'Probar diálogo de caída',
                     ),
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         );
       },
     );
   }
+
+  Color _activityColor(PhysicalActivityType? type) {
+    switch (type) {
+      case PhysicalActivityType.walking:
+        return AppTheme.green;
+      case PhysicalActivityType.running:
+        return AppTheme.red;
+      case PhysicalActivityType.stationary:
+      case null:
+        return const Color(0xFF78909C);
+    }
+  }
+
   IconData _activityIcon(PhysicalActivityType? type) {
     switch (type) {
       case PhysicalActivityType.walking:
-        return Icons.directions_walk;
+        return Icons.directions_walk_rounded;
       case PhysicalActivityType.running:
-        return Icons.directions_run;
+        return Icons.directions_run_rounded;
       case PhysicalActivityType.stationary:
-        return Icons.accessibility_new;
+        return Icons.self_improvement_rounded;
       default:
-        return Icons.sensors;
+        return Icons.sensors_rounded;
     }
   }
 }

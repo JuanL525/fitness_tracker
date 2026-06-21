@@ -30,7 +30,7 @@ Future<void> setupDependencyInjection() async {
     () => AccelerometerDataSourceImpl(),
   );
 
-  getIt.registerFactory<GpsDataSource>(
+  getIt.registerLazySingleton<GpsDataSource>(
     () => GpsDataSourceImpl(),
   );
 

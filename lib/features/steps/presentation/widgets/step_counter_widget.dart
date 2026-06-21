@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/app_animations.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../../../auth/data/datasources/accelerometer_datasource.dart';
 import '../../../auth/domain/entities/step_data.dart';
 import '../../../activity_monitor/domain/entities/physical_activity_type.dart';
@@ -123,133 +126,125 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
     }
   }
 
+  Color _activityColor(ActivityType? type) {
+    switch (type) {
+      case ActivityType.walking:
+        return AppTheme.activityColor('walking');
+      case ActivityType.running:
+        return AppTheme.activityColor('running');
+      case ActivityType.stationary:
+        return AppTheme.activityColor('stationary');
+      default:
+        return const Color(0xFF78909C);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<ActivityMonitorBloc, ActivityMonitorState>(
       builder: (context, monitorState) {
         final data = _displayData(monitorState);
-        final isLive =
-            _isTracking || monitorState.isSessionActive;
+        final isLive = _isTracking || monitorState.isSessionActive;
+        final scheme = Theme.of(context).colorScheme;
 
-        return Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return FeatureCard(
+          animationIndex: 0,
+          accentColor: AppTheme.stepsAccent,
+          child: Column(
+            children: [
+              SectionHeader(
+                title: 'Contador de Pasos',
+                subtitle: isLive ? 'Registrando movimiento' : 'Listo para iniciar',
+                isActive: _isTracking,
+                onToggle: _toggleTracking,
+                icon: Icons.directions_walk_rounded,
+                accentColor: AppTheme.stepsAccent,
+                activeSubtitleColor: AppTheme.blue,
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                decoration: BoxDecoration(
+                  color: AppTheme.stepsBg,
+                  borderRadius: BorderRadius.circular(AppTheme.chipRadius),
+                  border: Border.all(color: AppTheme.blue, width: 2),
+                ),
+                child: Column(
                   children: [
-                    const Text(
-                      'Contador de Pasos',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    AnimatedCount(
+                      value: data?.stepCount ?? 0,
+                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                            color: AppTheme.blue,
+                            fontWeight: FontWeight.w800,
+                          ),
                     ),
-                    ElevatedButton.icon(
-                      onPressed: _toggleTracking,
-                      icon: Icon(_isTracking ? Icons.stop : Icons.play_arrow),
-                      label: Text(_isTracking ? 'Detener' : 'Iniciar'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isTracking ? Colors.red : Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'pasos',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            letterSpacing: 1.2,
+                          ),
                     ),
                   ],
                 ),
-                const Divider(),
-                Text(
-                  '${data?.stepCount ?? 0}',
-                  style: const TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6366F1),
-                  ),
-                ),
-                const Text(
-                  'pasos',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                if (isLive && (data?.stepCount ?? 0) == 0)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Camina unos segundos para registrar pasos',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+              ),
+              if (isLive && (data?.stepCount ?? 0) == 0) ...[
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildInfoChip(
-                      icon: _getActivityIcon(data?.activityType),
-                      label: _getActivityLabel(data),
-                      color: Colors.blue,
-                    ),
-                    _buildInfoChip(
-                      icon: Icons.local_fire_department,
-                      label:
-                          '${data?.estimatedCalories.toStringAsFixed(1) ?? "0"} cal',
-                      color: Colors.orange,
-                    ),
-                  ],
+                Text(
+                  'Camina unos segundos para registrar pasos',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                  textAlign: TextAlign.center,
                 ),
               ],
-            ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  InfoChip(
+                    icon: _getActivityIcon(data?.activityType),
+                    label: _getActivityLabel(data),
+                    color: _activityColor(data?.activityType),
+                  ),
+                  const SizedBox(width: 12),
+                  InfoChip(
+                    icon: Icons.local_fire_department_rounded,
+                    label: '${data?.estimatedCalories.toStringAsFixed(1) ?? "0"} cal',
+                    color: AppTheme.orange,
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildInfoChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
   IconData _getActivityIcon(ActivityType? type) {
     switch (type) {
       case ActivityType.walking:
-        return Icons.directions_walk;
+        return Icons.directions_walk_rounded;
       case ActivityType.running:
-        return Icons.directions_run;
+        return Icons.directions_run_rounded;
       case ActivityType.stationary:
-        return Icons.accessibility_new;
+        return Icons.self_improvement_rounded;
       default:
-        return Icons.help_outline;
+        return Icons.sensors_rounded;
     }
   }
 
   String _getActivityLabel(StepData? data) {
     if (data == null) {
-      return 'Detectando...';
+      return 'Detectando…';
     }
     final spm = data.stepsPerMinute.round();
     switch (data.activityType) {
       case ActivityType.walking:
-        return spm > 0 ? 'Caminando · $spm pas/min' : 'Caminando';
+        return spm > 0 ? 'Caminando · $spm/min' : 'Caminando';
       case ActivityType.running:
-        return spm > 0 ? 'Corriendo · $spm pas/min' : 'Corriendo';
+        return spm > 0 ? 'Corriendo · $spm/min' : 'Corriendo';
       case ActivityType.stationary:
         return 'Quieto';
     }
