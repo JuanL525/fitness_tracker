@@ -5,27 +5,27 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../domain/entities/step_data.dart';
 
-/// Motor de conteo de pasos basado en acelerómetro (`sensors_plus`).
+/// Motor de pasos y actividad basado en picos del acelerómetro (con gravedad).
+/// Misma lógica que el proyecto de referencia: umbrales 13 / 17 m/s² y ventana 3 s.
 class SensorsStepEngine {
   StreamController<StepData>? _controller;
-  StreamSubscription<UserAccelerometerEvent>? _subscription;
-  Timer? _tickTimer;
+  StreamSubscription<AccelerometerEvent>? _subscription;
 
   int _stepCount = 0;
-  double _lastMagnitude = 0;
-  double _magnitudeBaseline = 0;
-  bool _aboveThreshold = false;
-  DateTime? _lastStepTime;
+  ActivityType _currentActivity = ActivityType.stationary;
+  DateTime _lastWalkTime = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastRunTime = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastStepTime = DateTime.fromMillisecondsSinceEpoch(0);
   final List<DateTime> _recentSteps = [];
 
-  static const double _stepThreshold = 1.2;
-  static const double _maxStepMagnitude = 4.0;
-  static const double _impactMagnitude = 6.0;
-  static const Duration _impactCooldown = Duration(seconds: 3);
-  static const Duration _minStepInterval = Duration(milliseconds: 280);
-  static const Duration _spmWindow = Duration(seconds: 3);
+  double _lastMagnitude = 0;
 
-  DateTime? _impactCooldownUntil;
+  static const double walkPeakThreshold = 13.0;
+  static const double runPeakThreshold = 17.0;
+  static const double fallIgnoreThreshold = 35.0;
+  static const Duration peakMemoryWindow = Duration(seconds: 3);
+  static const Duration minStepInterval = Duration(milliseconds: 300);
+  static const Duration spmWindow = Duration(seconds: 3);
 
   Stream<StepData> get stream {
     _controller ??= StreamController<StepData>.broadcast(
@@ -42,16 +42,15 @@ class SensorsStepEngine {
     _controller ??= StreamController<StepData>.broadcast();
     _resetSession();
 
-    _subscription = userAccelerometerEventStream().listen(_onEvent);
-    _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) => _emit());
+    _subscription = accelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).listen(_onEvent);
     _emit();
   }
 
   Future<void> stop() async {
     await _subscription?.cancel();
-    _tickTimer?.cancel();
     _subscription = null;
-    _tickTimer = null;
   }
 
   Future<void> dispose() async {
@@ -68,61 +67,58 @@ class SensorsStepEngine {
 
   void _resetSession() {
     _stepCount = 0;
-    _lastMagnitude = 0;
-    _magnitudeBaseline = 0;
-    _aboveThreshold = false;
-    _lastStepTime = null;
+    _currentActivity = ActivityType.stationary;
+    _lastWalkTime = DateTime.fromMillisecondsSinceEpoch(0);
+    _lastRunTime = DateTime.fromMillisecondsSinceEpoch(0);
+    _lastStepTime = DateTime.fromMillisecondsSinceEpoch(0);
     _recentSteps.clear();
-    _impactCooldownUntil = null;
+    _lastMagnitude = 0;
   }
 
-  void _onEvent(UserAccelerometerEvent event) {
+  void _onEvent(AccelerometerEvent event) {
     final magnitude = math.sqrt(
       event.x * event.x + event.y * event.y + event.z * event.z,
     );
 
+    if (magnitude > fallIgnoreThreshold) {
+      _lastMagnitude = magnitude;
+      _emit();
+      return;
+    }
+
     final now = DateTime.now();
-    if (_impactCooldownUntil != null &&
-        now.isBefore(_impactCooldownUntil!)) {
-      _lastMagnitude = magnitude;
-      return;
-    }
 
-    if (magnitude >= _impactMagnitude) {
-      _impactCooldownUntil = now.add(_impactCooldown);
-      _aboveThreshold = false;
-      _lastMagnitude = magnitude;
-      return;
-    }
-
-    if (magnitude > _maxStepMagnitude) {
-      _lastMagnitude = magnitude;
-      return;
-    }
-
-    if (_magnitudeBaseline == 0) {
-      _magnitudeBaseline = magnitude;
-    } else {
-      _magnitudeBaseline = (_magnitudeBaseline * 0.95) + (magnitude * 0.05);
+    // Conteo de pasos: cruce ascendente sobre umbral de caminata.
+    if (magnitude > walkPeakThreshold && _lastMagnitude <= walkPeakThreshold) {
+      if (now.difference(_lastStepTime) >= minStepInterval) {
+        _stepCount++;
+        _lastStepTime = now;
+        _recentSteps.add(now);
+        _pruneRecentSteps();
+      }
     }
     _lastMagnitude = magnitude;
 
-    if (magnitude > _magnitudeBaseline + _stepThreshold) {
-      if (!_aboveThreshold) {
-        _aboveThreshold = true;
-        final now = DateTime.now();
-        if (_lastStepTime == null ||
-            now.difference(_lastStepTime!) >= _minStepInterval) {
-          _stepCount++;
-          _lastStepTime = now;
-          _recentSteps.add(now);
-          _pruneRecentSteps();
-          _emit();
-        }
-      }
-    } else if (magnitude < _magnitudeBaseline + (_stepThreshold * 0.5)) {
-      _aboveThreshold = false;
+    // Picos de intensidad para walk / run.
+    if (magnitude > runPeakThreshold) {
+      _lastRunTime = now;
+    } else if (magnitude > walkPeakThreshold) {
+      _lastWalkTime = now;
     }
+
+    final newActivity = _resolveActivity(now);
+    _currentActivity = newActivity;
+    _emit();
+  }
+
+  ActivityType _resolveActivity(DateTime now) {
+    if (now.difference(_lastRunTime) < peakMemoryWindow) {
+      return ActivityType.running;
+    }
+    if (now.difference(_lastWalkTime) < peakMemoryWindow) {
+      return ActivityType.walking;
+    }
+    return ActivityType.stationary;
   }
 
   void _pruneRecentSteps() {
@@ -136,10 +132,10 @@ class SensorsStepEngine {
       return 0;
     }
 
-    final windowStart = DateTime.now().subtract(_spmWindow);
+    final windowStart = DateTime.now().subtract(spmWindow);
     final stepsInWindow =
-        _recentSteps.where((timestamp) => timestamp.isAfter(windowStart)).length;
-    return stepsInWindow * (60.0 / _spmWindow.inSeconds);
+        _recentSteps.where((t) => t.isAfter(windowStart)).length;
+    return stepsInWindow * (60.0 / spmWindow.inSeconds);
   }
 
   void _emit() {
@@ -151,7 +147,7 @@ class SensorsStepEngine {
     controller.add(
       StepData(
         stepCount: _stepCount,
-        activityType: ActivityType.stationary,
+        activityType: _currentActivity,
         magnitude: _lastMagnitude,
         stepsPerMinute: _computeSpm(),
       ),

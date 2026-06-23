@@ -10,9 +10,10 @@ abstract class GpsDataSource {
 }
 
 class GpsDataSourceImpl implements GpsDataSource {
+  /// Alta precisión; el filtrado fino (accuracy / distancia) se hace en la UI.
   static const _locationSettings = LocationSettings(
-    accuracy: LocationAccuracy.high,
-    distanceFilter: 2,
+    accuracy: LocationAccuracy.bestForNavigation,
+    distanceFilter: 0,
   );
 
   @override
@@ -45,18 +46,27 @@ class GpsDataSourceImpl implements GpsDataSource {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
+    if (permission == LocationPermission.denied) {
+      return false;
+    }
+    if (permission == LocationPermission.deniedForever) {
+      return false;
+    }
 
     return permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
   }
 
   LocationPoint _mapPosition(Position position) {
+    final speed = position.speed < 0 ? 0.0 : position.speed;
+    final accuracy = position.accuracy < 0 ? 0.0 : position.accuracy;
+
     return LocationPoint(
       latitude: position.latitude,
       longitude: position.longitude,
       altitude: position.altitude,
-      speed: position.speed,
-      accuracy: position.accuracy,
+      speed: speed,
+      accuracy: accuracy,
       timestamp: position.timestamp,
     );
   }

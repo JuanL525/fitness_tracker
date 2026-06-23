@@ -9,7 +9,6 @@ import '../repositories/activity_monitor_repositories.dart';
 import '../services/activity_debouncer.dart';
 import '../services/fall_detector.dart';
 import '../services/hybrid_activity_classifier.dart';
-import '../services/step_cadence_classifier.dart';
 import '../../data/datasources/platform_step_datasource.dart';
 
 class MonitorActivityUseCase {
@@ -51,8 +50,7 @@ class MonitorActivityUseCase {
   double _lastStepsPerMinute = 0;
   MovementSpeed? _lastGps;
   bool _fallAlertActive = false;
-
-  static const _stepActivityGrace = Duration(seconds: 4);
+  ActivityType _lastStepActivityType = ActivityType.stationary;
 
   Stream<ActivityMonitorEvent> get events => _controller.stream;
 
@@ -74,6 +72,7 @@ class MonitorActivityUseCase {
     _lastStepsPerMinute = 0;
     _lastGps = null;
     _fallAlertActive = false;
+    _lastStepActivityType = ActivityType.stationary;
 
     await _startLocationIfAvailable();
 
@@ -153,7 +152,7 @@ class MonitorActivityUseCase {
   bool get fallTestSensitivity => _fallDetector.testSensitivity;
 
   void _beginWarmup() {
-    _warmupUntil = DateTime.now().add(const Duration(seconds: 4));
+    _warmupUntil = DateTime.now().add(const Duration(seconds: 2));
     _debouncer.reset();
   }
 
@@ -170,15 +169,6 @@ class MonitorActivityUseCase {
     return DateTime.now().difference(lastIncrease);
   }
 
-  bool _stepsStillComingFromState() {
-    final lastIncrease = _lastStepIncreaseAt;
-    if (lastIncrease != null &&
-        DateTime.now().difference(lastIncrease) < _stepActivityGrace) {
-      return true;
-    }
-    return _lastStepsPerMinute >= StepCadenceClassifier.movementHoldSpm;
-  }
-
   void _onStepData(StepData data) {
     if (data.stepCount == 0 && (_previousStepCount ?? 0) > 0) {
       _beginWarmup();
@@ -189,6 +179,7 @@ class MonitorActivityUseCase {
     }
     _previousStepCount = data.stepCount;
     _lastStepsPerMinute = data.stepsPerMinute;
+    _lastStepActivityType = data.activityType;
 
     _fallDetector.onStepUpdate(data.stepCount);
     _controller.add(StepCountUpdated(data));
@@ -197,7 +188,18 @@ class MonitorActivityUseCase {
       return;
     }
 
-    _evaluateActivity();
+    _submitCandidate(_mapStepActivity(data.activityType));
+  }
+
+  PhysicalActivityType _mapStepActivity(ActivityType type) {
+    switch (type) {
+      case ActivityType.walking:
+        return PhysicalActivityType.walking;
+      case ActivityType.running:
+        return PhysicalActivityType.running;
+      case ActivityType.stationary:
+        return PhysicalActivityType.stationary;
+    }
   }
 
   void _evaluateActivity() {
@@ -216,13 +218,7 @@ class MonitorActivityUseCase {
       return;
     }
 
-    final type = _activityClassifier.classifyMovement(
-      stepsPerMinute: _lastStepsPerMinute,
-      stepsStillComing: _stepsStillComingFromState(),
-      gps: _lastGps,
-    );
-
-    _submitCandidate(type);
+    _submitCandidate(_mapStepActivity(_lastStepActivityType));
   }
 
   void _submitCandidate(PhysicalActivityType type) {

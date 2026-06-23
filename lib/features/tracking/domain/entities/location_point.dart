@@ -3,6 +3,12 @@ import 'dart:math' as math;
 
 /// Punto de ubicación GPS
 class LocationPoint extends Equatable {
+  /// Ignorar lecturas con error horizontal mayor a este valor (metros).
+  static const double maxAcceptableAccuracyMeters = 15.0;
+
+  /// Distancia mínima entre puntos consecutivos de la ruta (anti-ruido).
+  static const double minDistanceBetweenPointsMeters = 1.0;
+
   final double latitude;
   final double longitude;
   final double altitude;

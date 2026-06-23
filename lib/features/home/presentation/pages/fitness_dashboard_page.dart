@@ -34,6 +34,9 @@ class _FitnessDashboardPageState extends State<FitnessDashboardPage> {
     if (isMonitoring && _speedSub == null) {
       final gps = getIt<GpsDataSource>();
       _speedSub = gps.locationStream.listen((point) {
+        if (point.accuracy > LocationPoint.maxAcceptableAccuracyMeters) {
+          return;
+        }
         if (mounted) {
           setState(() {
             _speedKmh = (point.speed * 3.6).clamp(0, 999);

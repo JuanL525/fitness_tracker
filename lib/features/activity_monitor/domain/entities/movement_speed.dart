@@ -14,6 +14,8 @@ class MovementSpeed {
   }
 
   bool get isReliable {
-    return isFresh() && accuracyMeters > 0 && accuracyMeters <= 35;
+    return isFresh() &&
+        accuracyMeters > 0 &&
+        accuracyMeters <= 15;
   }
 }

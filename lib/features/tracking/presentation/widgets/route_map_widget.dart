@@ -52,6 +52,11 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
 
     _subscription = _dataSource.locationStream.listen(
       (point) {
+        // Filtro de precisión: descartar puntos con mucho error horizontal.
+        if (point.accuracy > LocationPoint.maxAcceptableAccuracyMeters) {
+          return;
+        }
+
         if (_route.points.isEmpty) {
           setState(() {
             _route.addPoint(point);
@@ -60,7 +65,10 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
           });
         } else {
           final lastPoint = _route.points.last;
-          if (lastPoint.distanceTo(point) >= 2) {
+          final distance = lastPoint.distanceTo(point);
+
+          // Anti-spaghetti: solo añadir si hay movimiento real ≥ 1 m.
+          if (distance >= LocationPoint.minDistanceBetweenPointsMeters) {
             setState(() {
               _route.addPoint(point);
               _statusMessage =
@@ -136,6 +144,11 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
                           value:
                               '${_route.averageSpeed.toStringAsFixed(1)} km/h',
                           color: AppTheme.emerald400,
+                        ),
+                        _RouteMetric(
+                          label: 'CALORÍAS',
+                          value: _route.estimatedCalories.toStringAsFixed(0),
+                          color: AppTheme.rose500,
                         ),
                       ],
                     ),

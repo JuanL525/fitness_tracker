@@ -121,8 +121,7 @@ class ActivityMonitorWidget extends StatelessWidget {
               InfoBanner(
                 message: fallTestMode
                     ? 'Modo prueba: sacudida fuerte dispara alerta al instante.'
-                    : 'Voz según pasos/min: caminar ≥55, correr ≥110. '
-                        'Caída solo con sacudida fuerte y sin pasos recientes.',
+                    : 'Actividad por picos del acelerómetro: caminar >13, correr >17 m/s².',
                 icon: Icons.tips_and_updates_outlined,
                 backgroundColor: AppTheme.yellowBg,
                 iconColor: AppTheme.orange,
