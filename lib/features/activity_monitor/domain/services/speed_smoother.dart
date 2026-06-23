@@ -1,6 +1,6 @@
 /// Suaviza lecturas ruidosas de velocidad GPS (media móvil exponencial).
 class SpeedSmoother {
-  SpeedSmoother({this.alpha = 0.25});
+  SpeedSmoother({this.alpha = 0.35});
 
   final double alpha;
   double? _smoothed;

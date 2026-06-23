@@ -4,8 +4,8 @@ import '../entities/physical_activity_type.dart';
 
 class ActivityDebouncer {
   ActivityDebouncer({
-    this.stabilityDuration = const Duration(milliseconds: 1200),
-    this.paceChangeDuration = const Duration(milliseconds: 2800),
+    this.stabilityDuration = const Duration(milliseconds: 1000),
+    this.paceChangeDuration = const Duration(milliseconds: 2000),
     this.stationaryDuration = const Duration(milliseconds: 900),
   });
 

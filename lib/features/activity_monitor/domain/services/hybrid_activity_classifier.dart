@@ -43,7 +43,7 @@ class HybridActivityClassifier {
     return stepsPerMinute <= 5;
   }
 
-  static const double _walkingToRunningSpeedMps = 2.2;
+  static const double _walkingToRunningSpeedMps = 1.8;
 
   PhysicalActivityType classifyMovement({
     required double stepsPerMinute,

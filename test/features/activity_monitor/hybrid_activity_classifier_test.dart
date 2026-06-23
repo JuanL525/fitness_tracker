@@ -36,8 +36,7 @@ void main() {
       }
       expect(classifier.current, PhysicalActivityType.walking);
 
-      // EWMA from ~100 SPM never reaches enterRunning (130) with 130 SPM alone;
-      // sustained readings above the threshold are required.
+      // EWMA from ~100 SPM needs sustained readings above enterRunning (110).
       for (var i = 0; i < 8; i++) {
         classifier.classifyMovement(
           stepsPerMinute: 150,

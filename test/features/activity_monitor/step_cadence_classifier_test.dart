@@ -23,7 +23,7 @@ void main() {
         classifier.classify(stepsPerMinute: 125, stepsStillComing: true),
         PhysicalActivityType.running,
       );
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < 10; i++) {
         classifier.classify(stepsPerMinute: 90, stepsStillComing: true);
       }
       expect(classifier.current, PhysicalActivityType.walking);
