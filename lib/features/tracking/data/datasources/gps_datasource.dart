@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
 import '../../domain/entities/location_point.dart';
@@ -10,11 +14,30 @@ abstract class GpsDataSource {
 }
 
 class GpsDataSourceImpl implements GpsDataSource {
+  Stream<LocationPoint>? _sharedStream;
+
   /// Alta precisión; el filtrado fino (accuracy / distancia) se hace en la UI.
-  static const _locationSettings = LocationSettings(
-    accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 0,
-  );
+  static LocationSettings get _locationSettings {
+    if (!kIsWeb && Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        intervalDuration: const Duration(seconds: 1),
+      );
+    }
+    if (!kIsWeb && Platform.isIOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        activityType: ActivityType.fitness,
+        pauseLocationUpdatesAutomatically: false,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    );
+  }
 
   @override
   Future<LocationPoint?> getCurrentLocation() async {
@@ -30,9 +53,9 @@ class GpsDataSourceImpl implements GpsDataSource {
 
   @override
   Stream<LocationPoint> get locationStream {
-    return Geolocator.getPositionStream(
+    return _sharedStream ??= Geolocator.getPositionStream(
       locationSettings: _locationSettings,
-    ).map(_mapPosition);
+    ).map(_mapPosition).asBroadcastStream();
   }
 
   @override

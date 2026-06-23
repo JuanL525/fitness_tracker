@@ -6,8 +6,14 @@ class LocationPoint extends Equatable {
   /// Ignorar lecturas con error horizontal mayor a este valor (metros).
   static const double maxAcceptableAccuracyMeters = 15.0;
 
+  /// Si no llega ningún punto válido, relajar temporalmente hasta este valor.
+  static const double relaxedAccuracyMeters = 25.0;
+
   /// Distancia mínima entre puntos consecutivos de la ruta (anti-ruido).
   static const double minDistanceBetweenPointsMeters = 1.0;
+
+  /// Tras este tiempo sin puntos, se acepta una lectura menos precisa.
+  static const Duration pointStarvationTimeout = Duration(seconds: 4);
 
   final double latitude;
   final double longitude;

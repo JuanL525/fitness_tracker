@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart' hide Route;
 import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart' hide Route;
 
 import 'package:flutter_lucide/flutter_lucide.dart';
 
@@ -17,15 +19,18 @@ class RouteMapWidget extends StatefulWidget {
 
 class _RouteMapWidgetState extends State<RouteMapWidget> {
   late final GpsDataSource _dataSource = getIt<GpsDataSource>();
-  final Route _route = Route();
+  Route _route = Route();
 
   StreamSubscription<LocationPoint>? _subscription;
+  Timer? _metricsTimer;
   bool _isTracking = false;
   String _statusMessage = 'Presiona Iniciar para comenzar';
+  DateTime? _lastPointAddedAt;
 
   @override
   void dispose() {
     _subscription?.cancel();
+    _metricsTimer?.cancel();
     super.dispose();
   }
 
@@ -50,46 +55,68 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
       return;
     }
 
+    _subscription?.cancel();
+    _route = Route();
+    _lastPointAddedAt = null;
     _subscription = _dataSource.locationStream.listen(
       (point) {
-        // Filtro de precisión: descartar puntos con mucho error horizontal.
-        if (point.accuracy > LocationPoint.maxAcceptableAccuracyMeters) {
+        if (!_shouldAcceptPoint(point)) {
           return;
         }
 
-        if (_route.points.isEmpty) {
-          setState(() {
-            _route.addPoint(point);
-            _statusMessage =
-                'Registrando ruta · ${_route.points.length} puntos';
-          });
-        } else {
-          final lastPoint = _route.points.last;
+        final lastPoint =
+            _route.points.isEmpty ? null : _route.points.last;
+        if (lastPoint != null) {
           final distance = lastPoint.distanceTo(point);
-
-          // Anti-spaghetti: solo añadir si hay movimiento real ≥ 1 m.
-          if (distance >= LocationPoint.minDistanceBetweenPointsMeters) {
-            setState(() {
-              _route.addPoint(point);
-              _statusMessage =
-                  'Registrando ruta · ${_route.points.length} puntos';
-            });
+          if (distance < LocationPoint.minDistanceBetweenPointsMeters) {
+            return;
           }
         }
+
+        setState(() {
+          _route.addPoint(point);
+          _lastPointAddedAt = DateTime.now();
+          _statusMessage =
+              'Registrando ruta · ${_route.points.length} puntos';
+        });
       },
       onError: (error) {
         setState(() => _statusMessage = 'Error: $error');
       },
     );
 
+    _startMetricsTimer();
     setState(() {
       _isTracking = true;
       _statusMessage = 'Esperando señal GPS…';
     });
   }
 
+  bool _shouldAcceptPoint(LocationPoint point) {
+    if (point.accuracy <= LocationPoint.maxAcceptableAccuracyMeters) {
+      return true;
+    }
+
+    final lastAdded = _lastPointAddedAt ?? _route.startTime;
+    final starving = DateTime.now().difference(lastAdded) >=
+        LocationPoint.pointStarvationTimeout;
+
+    return starving && point.accuracy <= LocationPoint.relaxedAccuracyMeters;
+  }
+
+  void _startMetricsTimer() {
+    _metricsTimer?.cancel();
+    _metricsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _isTracking) {
+        setState(() {});
+      }
+    });
+  }
+
   void _stopTracking() {
     _subscription?.cancel();
+    _metricsTimer?.cancel();
+    _metricsTimer = null;
     _route.finish();
     setState(() {
       _isTracking = false;
@@ -131,7 +158,7 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
                       children: [
                         _RouteMetric(
                           label: 'DISTANCIA',
-                          value: '${_route.distanceKm.toStringAsFixed(2)} km',
+                          value: _formatDistance(_route.distanceKm),
                           color: AppTheme.blue400,
                         ),
                         _RouteMetric(
@@ -174,6 +201,13 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
     if (hours > 0) return '${hours}h ${minutes}m';
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
+
+  String _formatDistance(double km) {
+    if (km < 0.1) {
+      return '${(km * 1000).round()} m';
+    }
+    return '${km.toStringAsFixed(2)} km';
+  }
 }
 
 class _RouteMetric extends StatelessWidget {
@@ -194,14 +228,18 @@ class _RouteMetric extends StatelessWidget {
         children: [
           Text(label, style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: color,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -314,32 +352,58 @@ class RoutePainter extends CustomPainter {
       return;
     }
 
-    double minLat = route.points.first.latitude;
-    double maxLat = route.points.first.latitude;
-    double minLon = route.points.first.longitude;
-    double maxLon = route.points.first.longitude;
-
-    for (final point in route.points) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLon) minLon = point.longitude;
-      if (point.longitude > maxLon) maxLon = point.longitude;
-    }
-
     const padding = 24.0;
     final drawWidth = size.width - padding * 2;
     final drawHeight = size.height - padding * 2;
 
+    final centerLat = route.points
+            .map((p) => p.latitude)
+            .reduce((a, b) => a + b) /
+        route.points.length;
+    final centerLon = route.points
+            .map((p) => p.longitude)
+            .reduce((a, b) => a + b) /
+        route.points.length;
+
+    const metersPerDegLat = 111320.0;
+    final metersPerDegLon =
+        metersPerDegLat * math.cos(centerLat * math.pi / 180);
+
+    double toLocalX(LocationPoint point) =>
+        (point.longitude - centerLon) * metersPerDegLon;
+    double toLocalY(LocationPoint point) =>
+        (point.latitude - centerLat) * metersPerDegLat;
+
+    var minX = toLocalX(route.points.first);
+    var maxX = minX;
+    var minY = toLocalY(route.points.first);
+    var maxY = minY;
+
+    for (final point in route.points) {
+      final x = toLocalX(point);
+      final y = toLocalY(point);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+
+    var rangeX = maxX - minX;
+    var rangeY = maxY - minY;
+    if (rangeX < 1) rangeX = 1;
+    if (rangeY < 1) rangeY = 1;
+
+    final scale = math.min(drawWidth / rangeX, drawHeight / rangeY);
+    final offsetX = padding + (drawWidth - rangeX * scale) / 2;
+    final offsetY = padding + (drawHeight - rangeY * scale) / 2;
+
     Offset toPixel(LocationPoint point) {
-      final latRange = maxLat - minLat;
-      final lonRange = maxLon - minLon;
-      final x = lonRange == 0
-          ? drawWidth / 2
-          : ((point.longitude - minLon) / lonRange) * drawWidth;
-      final y = latRange == 0
-          ? drawHeight / 2
-          : ((maxLat - point.latitude) / latRange) * drawHeight;
-      return Offset(x + padding, y + padding);
+      final x = toLocalX(point);
+      final y = toLocalY(point);
+      return Offset(
+        offsetX + (x - minX) * scale,
+        offsetY + (maxY - y) * scale,
+      );
     }
 
     final linePaint = Paint()
